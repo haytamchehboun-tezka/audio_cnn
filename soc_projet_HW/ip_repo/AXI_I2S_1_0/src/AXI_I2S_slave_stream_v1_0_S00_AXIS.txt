@@ -1,0 +1,55 @@
+architecture implementation of AXI_I2S_slave_stream_v1_0_S00_AXIS is
+
+    type t_rx_state is (GET_LEFT, GET_RIGHT);
+    signal rx_state : t_rx_state := GET_LEFT;
+
+    signal axis_tready_reg : std_logic := '0';
+
+begin
+
+    S_AXIS_TREADY <= axis_tready_reg;
+
+    process(S_AXIS_ACLK)
+    begin
+        if rising_edge(S_AXIS_ACLK) then
+            if S_AXIS_ARESETN = '0' then
+                rx_state        <= GET_LEFT;
+                axis_tready_reg <= '0';
+                tx_left_data    <= (others => '0');
+                tx_right_data   <= (others => '0');
+            else
+                -- Par défaut, on ne prend pas de nouvelle donnée
+                axis_tready_reg <= '0';
+
+                case rx_state is
+                    when GET_LEFT =>
+                        -- On est prêt à recevoir la voie gauche uniquement 
+                        -- si le module I2S est prêt à consommer / charger
+                        if load_next = '1' then 
+                            axis_tready_reg <= '1';
+                            
+                            -- Si le DMA propose une donnée valide en même temps
+                            if S_AXIS_TVALID = '1' then
+                                tx_left_data <= S_AXIS_TDATA(DATA_WIDTH-1 downto 0);
+                                rx_state     <= GET_RIGHT;
+                            end if;
+                        end if;
+
+                    when GET_RIGHT =>
+                        -- On est prêt à recevoir la voie droite
+                        axis_tready_reg <= '1';
+
+                        if S_AXIS_TVALID = '1' then
+                            tx_right_data <= S_AXIS_TDATA(DATA_WIDTH-1 downto 0);
+                            rx_state      <= GET_LEFT; -- Paire stéréo bouclée
+                        end if;
+
+                    when others =>
+                        rx_state        <= GET_LEFT;
+                        axis_tready_reg <= '0';
+                end case;
+            end if;
+        end if;
+    end process;
+
+end implementation;
